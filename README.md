@@ -1,248 +1,109 @@
-# Dashboard de Suivi des Interventions FME
+# FME Intervention Tracker Dashboard
 
-Application web complète pour le suivi des interventions des Field Maintenance Engineers (FME) sur les sites télécom.
+A comprehensive web application for tracking Field Maintenance Engineer (FME) interventions on telecom sites.
 
-## 🚀 Fonctionnalités
+## 🚀 Features
 
-### 1. Enregistrement des Interventions
-- Capture des informations du FME (nom, entreprise, téléphone)
-- Enregistrement du site (T-Number, nom du site)
-- État du site à l'arrivée (Down, Up, Sector Failure)
-- Action à mener (liste prédéfinie + possibilité d'ajout)
-- Horodatage automatique de l'arrivée
+- **Intervention Logging**: Capture FME details, site information, and initial state with automatic timestamps
+- **Closure Management**: Record final state and departure time for completed interventions
+- **Real-time Dashboard**: Monitor ongoing interventions and view key metrics
+- **Advanced Analytics**: Interactive charts by company, initial state, and action type
+- **Smart Filtering**: Filter by status, company, unresolved sites, and date range
+- **Custom Actions**: Add and manage custom intervention actions
+- **Local Database**: SQLite storage with no external dependencies
 
-### 2. Fermeture des Interventions
-- Vérification de l'état final du site
-- Horodatage automatique du départ
-- Suivi des sites restés down après intervention
+## 📋 Requirements
 
-### 3. Dashboard et Statistiques
-- Vue d'ensemble en temps réel
-- Interventions en cours
-- Historique des interventions récentes
-- Statistiques globales :
-  - Nombre d'interventions en cours
-  - Total des interventions
-  - Sites encore down
-  - Taux de résolution
-- Graphiques par entreprise, état initial et action
+- Python 3.8+
+- Modern web browser (Chrome, Firefox, Edge, Safari)
 
-### 4. Filtres Avancés
-- Par statut (en cours / terminé)
-- Par entreprise
-- Sites restés down
-- Par période (date début - date fin)
+## 🔧 Quick Start
 
-### 5. Reporting
-- Export des données possible (extension future)
-- Historique complet de toutes les interventions
-
-## 📋 Prérequis
-
-- Python 3.8 ou supérieur
-- Navigateur web moderne (Chrome, Firefox, Edge, Safari)
-
-## 🔧 Installation
-
-### 1. Installer les dépendances Python
+### Installation
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Ou manuellement :
+Or manually:
 ```bash
 pip install Flask==3.0.0 flask-cors==4.0.0
 ```
 
-### 2. Lancer l'application
+### Launch
 
 ```bash
 python app.py
 ```
 
-Le serveur démarrera automatiquement sur `http://localhost:5000`
+Access the dashboard at `http://localhost:5000`
 
-### 3. Accéder au dashboard
+## 💾 Database
 
-Ouvrez votre navigateur et accédez à :
-```
-http://localhost:5000
-```
+SQLite database `fme_tracker.db` is auto-created on first run.
 
-## 💾 Base de Données
+**Key Tables:**
+- `interventions`: FME details, site info, timestamps, status
+- `custom_actions`: User-defined intervention types
 
-L'application utilise **SQLite** qui ne nécessite aucune configuration ni connexion internet.
+## 📱 Usage Guide
 
-La base de données `fme_tracker.db` est créée automatiquement au premier lancement dans le répertoire de l'application.
+| Task | Steps |
+|------|-------|
+| **New Intervention** | Click "Nouvelle" → Fill form → Save |
+| **Close Intervention** | Select intervention → Click "Fermer" → Set final state |
+| **Add Action** | Click "+" in action field → Enter name |
+| **Filter Data** | Go to "Interventions" → Apply filters → Click "Filtrer" |
+| **View Stats** | Click "Statistiques" → Review charts |
 
-### Structure de la base de données
+## 🎨 UI Highlights
 
-#### Table `interventions`
-- `id` : Identifiant unique
-- `fme_name` : Nom du FME
-- `company` : Entreprise
-- `phone_number` : Numéro de téléphone
-- `t_number` : Identifiant du site
-- `site_name` : Nom du site
-- `initial_state` : État initial (down, up, sector_failure)
-- `action` : Action menée
-- `arrival_time` : Heure d'arrivée
-- `departure_time` : Heure de départ
-- `final_state` : État final
-- `status` : Statut (en_cours, termine)
-- `created_at` : Date de création
+- Modern dark design with orange accents
+- Fully responsive layout
+- Auto-refresh every 30 seconds
+- Intuitive navigation menu
 
-#### Table `custom_actions`
-- `id` : Identifiant unique
-- `action_name` : Nom de l'action personnalisée
-- `created_at` : Date de création
+## 🔒 Security
 
-## 📱 Guide d'Utilisation
+- ✅ Local database only
+- ✅ No internet required
+- ✅ No external dependencies
+- ✅ Data stays on device
 
-### Enregistrer une nouvelle intervention
+## ⚙️ Customization
 
-1. Cliquez sur **"Nouvelle"** dans le menu latéral
-2. Remplissez tous les champs requis :
-   - Nom du FME
-   - Entreprise
-   - Numéro de téléphone
-   - T-Number du site
-   - Nom du site
-   - État initial du site
-   - Action à mener
-3. Cliquez sur **"Enregistrer l'Intervention"**
-
-💡 L'heure d'arrivée est automatiquement enregistrée
-
-### Fermer une intervention
-
-1. Dans le **Dashboard** ou la vue **Interventions**, repérez l'intervention en cours
-2. Cliquez sur le bouton **"Fermer l'intervention"**
-3. Sélectionnez l'état final du site (Down, Up, Sector Failure)
-4. Cliquez sur **"Fermer l'Intervention"**
-
-💡 L'heure de départ est automatiquement enregistrée
-
-### Ajouter une action personnalisée
-
-1. Dans le formulaire de nouvelle intervention
-2. Cliquez sur le bouton **"+ Ajouter"** à côté du champ "Action"
-3. Entrez le nom de la nouvelle action
-4. Cliquez sur **"Ajouter"**
-
-### Filtrer les interventions
-
-1. Allez dans la vue **"Interventions"**
-2. Utilisez les filtres disponibles :
-   - Statut (En cours / Terminé)
-   - Entreprise
-   - Sites restés DOWN (case à cocher)
-   - Date de début
-   - Date de fin
-3. Cliquez sur **"Filtrer"**
-4. Pour réinitialiser : **"Réinitialiser"**
-
-### Consulter les statistiques
-
-1. Cliquez sur **"Statistiques"** dans le menu
-2. Visualisez les graphiques :
-   - Interventions par entreprise
-   - Interventions par état initial
-   - Top 10 des actions
-
-## 🎨 Interface
-
-L'interface est conçue pour être :
-- **Moderne et professionnelle** : Design sombre avec des accents orangés
-- **Intuitive** : Navigation simple et claire
-- **Responsive** : S'adapte aux différentes tailles d'écran
-- **Temps réel** : Actualisation automatique toutes les 30 secondes
-
-### Navigation
-
-- **📊 Dashboard** : Vue d'ensemble et interventions en cours
-- **📋 Interventions** : Historique complet avec filtres
-- **➕ Nouvelle** : Enregistrer une nouvelle intervention
-- **📈 Statistiques** : Analyses et graphiques
-
-## 🔒 Sécurité et Données
-
-- ✅ Base de données locale (SQLite)
-- ✅ Aucune connexion internet requise
-- ✅ Données stockées en local
-- ✅ Pas de dépendance externe
-
-## 🛠️ Support et Personnalisation
-
-### Modifier les actions prédéfinies
-
-Éditez le fichier `app.py`, section `PREDEFINED_ACTIONS` :
-
+**Change predefined actions** in `app.py`:
 ```python
-PREDEFINED_ACTIONS = [
-    "Remplacement d'équipement",
-    "Maintenance préventive",
-    # Ajoutez vos actions ici
-]
+PREDEFINED_ACTIONS = ["Action 1", "Action 2"]
 ```
 
-### Modifier le port
-
-Par défaut, l'application tourne sur le port 5000. Pour changer :
-
+**Change port**:
 ```python
-app.run(debug=True, host='0.0.0.0', port=8080)  # Changez 8080 par votre port
+app.run(debug=True, port=8080)
 ```
 
-### Sauvegarder la base de données
+## 📊 Performance
 
-Copiez simplement le fichier `fme_tracker.db` vers un emplacement sûr.
+- Handles 15-20 daily interventions
+- Supports thousands of historical records
+- Multi-user capable
 
-## 📊 Capacité
+## 🐛 Troubleshooting
 
-L'application peut gérer confortablement :
-- ✅ 15-20 interventions par jour
-- ✅ Des milliers d'interventions dans l'historique
-- ✅ Plusieurs utilisateurs simultanés (superviseurs)
+| Issue | Solution |
+|-------|----------|
+| Server won't start | Check Python version, reinstall dependencies |
+| Page not loading | Verify server is running, clear browser cache |
+| Data missing | Check browser console (F12), restart server |
 
-## 🐛 Dépannage
+## 🚀 Future Enhancements
 
-### Le serveur ne démarre pas
-```bash
-# Vérifiez que Python est installé
-python --version
-
-# Vérifiez les dépendances
-pip install -r requirements.txt
-```
-
-### La page ne se charge pas
-- Vérifiez que le serveur est démarré
-- Accédez à `http://localhost:5000` (pas 127.0.0.1)
-- Videz le cache du navigateur
-
-### Les données ne s'affichent pas
-- Vérifiez la console JavaScript (F12 dans le navigateur)
-- Redémarrez le serveur
-- Actualisez la page (F5)
-
-## 📝 Notes
-
-- L'application est conçue pour fonctionner **sans internet**
-- La base de données SQLite est **légère et portable**
-- Les **actions personnalisées** sont sauvegardées définitivement
-- Le **taux de résolution** est calculé automatiquement
-
-## 🚀 Évolutions Futures Possibles
-
-- Export Excel/PDF des rapports
-- Notifications par email/SMS
-- Application mobile native
-- Intégration avec d'autres systèmes
-- Authentification multi-utilisateurs
-- Tableau de bord temps réel avec WebSocket
+- Excel/PDF exports
+- Email/SMS notifications
+- Mobile app
+- Multi-user authentication
+- WebSocket real-time updates
 
 ---
 
-**Développé pour le suivi efficace des interventions FME sur les sites télécom** 📡
+**Efficient FME intervention tracking for telecom sites** 📡
