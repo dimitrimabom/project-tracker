@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FME Tracker</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-slide-in { animation: slideIn 0.3s ease-out; }
+        .animate-fade-in { animation: fadeIn 0.2s ease-out; }
+        .animate-slide-up { animation: slideUp 0.3s ease-out; }
+        .autocomplete-list {
+            position: absolute; top: 100%; left: 0; right: 0; z-index: 50;
+            max-height: 200px; overflow-y: auto; background: white;
+            border: 1px solid #e5e7eb; border-radius: 0.5rem; margin-top: 0.25rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+        .autocomplete-item {
+            padding: 0.75rem 1rem; cursor: pointer; transition: all 0.15s;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        .autocomplete-item:last-child { border-bottom: none; }
+        .autocomplete-item:hover { background-color: #f9fafb; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="root"></div>
+
+    <script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+const API_URL = "http://localhost:5000/api";
+
+function App() {
+    const [interventions, setInterventions] = useState([]);
+    const [filteredInterventions, setFilteredInterventions] = useState([]);
+    const [sites, setSites] = useState([]);
+    const [companies, setCompanies] = useState([]);
+    const [fmeList, setFmeList] = useState([]);
+    const [actionSuggestions, setActionSuggestions] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [showNewModal, setShowNewModal] = useState(false);
+    const [showCloseModal, setShowCloseModal] = useState(false);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [selectedIntervention, setSelectedIntervention] = useState(null);
+    const [interventionToDelete, setInterventionToDelete] = useState(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [filters, setFilters] = useState({ status: '', company: '', dateFrom: '', dateTo: '' });
+    const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+
+    const loadData = useCallback(async () => {
+        setLoading(true);
+        try {
+            const [interventionsRes, sitesRes, companiesRes, fmeRes, suggestionsRes] = await Promise.all([
+                fetch(`${API_URL}/interventions`),
+                fetch(`${API_URL}/sites`),
+                fetch(`${API_URL}/companies`),
+                fetch(`${API_URL}/fme`),
+                fetch(`${API_URL}/suggestions/actions`)
+            ]);
+            const data = await interventionsRes.json();
+            setInterventions(data);
+            setFilteredInterventions(data);
+            setSites(await sitesRes.json());
+            setCompanies(await companiesRes.json());
+            setFmeList(await fmeRes.json());
+            setActionSuggestions(await suggestionsRes.json());
+        } catch (error) {
+            showToast('Erreur de connexion', 'error');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        let filtered = [...interventions];
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase();
+            filtered = filtered.filter(i => 
+                i.ticket_number?.toLowerCase().includes(query) ||
+                i.t_number?.toLowerCase().includes(query) ||
+                i.site_name?.toLowerCase().includes(query) ||
+                i.fme_name?.toLowerCase().includes(query)
+            );
+        }
+        if (filters.status) filtered = filtered.filter(i => i.status === filters.status);
+        if (filters.company) filtered = filtered.filter(i => i.company_name === filters.company);
+        if (filters.dateFrom) filtered = filtered.filter(i => i.arrival_time >= filters.dateFrom);
+        if (filters.dateTo) filtered = filtered.filter(i => i.arrival_time <= filters.dateTo + ' 23:59:59');
+        setFilteredInterventions(filtered);
+    }, [searchQuery, filters, interventions]);
+
+    useEffect(() => {
+        loadData();
+        const interval = setInterval(loadData, 30000);
+        return () => clearInterval(interval);
+    }, [loadData]);
+
+    const showToast = (message, type = 'success') => {
+        setToast({ show: true, message, type });
+        setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
+    };
+
+    const handleNewIntervention = async (data) => {
+        try {
+            const res = await fetch(`${API_URL}/interventions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if (res.ok) {
+                const result = await res.json();
+                showToast(`✓ Ticket créé: ${result.ticket_number}`);
+                setShowNewModal(false);
+                loadData();
+            } else {
+                const error = await res.json();
+                showToast(error.error || 'Erreur', 'error');
+            }
+        } catch (error) {
+            showToast('Erreur de connexion', 'error');
+        }
+    };
+
+    const handleCloseIntervention = async (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        try {
+            const res = await fetch(`${API_URL}/interventions/${selectedIntervention}/close`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    final_state: formData.get('final_state'),
+                    comment: formData.get('comment')
+                })
+            });
+            if (res.ok) {
+                showToast('✓ Intervention fermée');
+                setShowCloseModal(false);
+                loadData();
+            }
+        } catch (error) {
+            showToast('Erreur', 'error');
+        }
+    };
+
+    const confirmDelete = (id) => {
+        setInterventionToDelete(id);
+        setShowDeleteModal(true);
+    };
+
+    const deleteIntervention = async () => {
+        try {
+            const res = await fetch(`${API_URL}/interventions/${interventionToDelete}`, { method: 'DELETE' });
+            if (res.ok) {
+                showToast('✓ Supprimé');
+                setShowDeleteModal(false);
+                loadData();
+            }
+        } catch (error) {
+            showToast('Erreur', 'error');
+        }
+    };
+
+    const exportToExcel = () => {
+        const params = new URLSearchParams();
+        if (filters.status) params.append('status', filters.status);
+        if (filters.company) params.append('company', filters.company);
+        if (filters.dateFrom) params.append('date_from', filters.dateFrom);
+        if (filters.dateTo) params.append('date_to', filters.dateTo);
+        window.open(`${API_URL}/export/excel?${params}`, '_blank');
+        showToast('📊 Export en cours...');
+    };
+
+    const formatState = (state) => ({'down': 'Down', 'up': 'Up', 'sector_failure': 'Sector Failure'}[state] || state);
+    const formatDateTime = (dateStr) => {
+        if (!dateStr) return '-';
+        return new Date(dateStr).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    };
+    const getStatusColor = (status) => status === 'en_cours' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700';
+    const getStateColor = (state) => ({'down': 'bg-red-100 text-red-700', 'up': 'bg-green-100 text-green-700', 'sector_failure': 'bg-yellow-100 text-yellow-700'}[state] || 'bg-gray-100 text-gray-700');
+    const companies_list = [...new Set(interventions.map(i => i.company_name).filter(Boolean))];
+
+    return (
+        <div className="min-h-screen bg-gray-50">
+            <header className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-sm">
+                <div className="px-6 py-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center text-white font-bold text-lg shadow-lg">F</div>
+                            <div>
+                                <h1 className="text-xl font-bold text-gray-900">FME Tracker</h1>
+                                <p className="text-xs text-gray-500">Gestion des interventions</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <button onClick={loadData} disabled={loading} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700 flex items-center gap-2">
+                                <span className={loading ? 'animate-spin' : ''}>🔄</span>
+                                <span className="hidden sm:inline">Actualiser</span>
+                            </button>
+                            <button onClick={() => setShowNewModal(true)} className="px-6 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-semibold shadow-lg shadow-blue-500/30 flex items-center gap-2">
+                                <span className="text-lg">+</span>
+                                <span>Nouvelle Intervention</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <div className="px-6 py-6">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+                    <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                        <div className="text-3xl font-bold text-blue-600">{interventions.filter(i => i.status === 'en_cours').length}</div>
+                        <div className="text-sm text-gray-600 mt-1">En cours</div>
+                    </div>
+                    <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                        <div className="text-3xl font-bold text-gray-900">{interventions.length}</div>
+                        <div className="text-sm text-gray-600 mt-1">Total</div>
+                    </div>
+                    <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                        <div className="text-3xl font-bold text-red-600">{interventions.filter(i => i.final_state === 'down').length}</div>
+                        <div className="text-sm text-gray-600 mt-1">Sites Down</div>
+                    </div>
+                    <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                        <div className="text-3xl font-bold text-green-600">{filteredInterventions.length}</div>
+                        <div className="text-sm text-gray-600 mt-1">Affichés</div>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+                    <div className="space-y-4">
+                        <div className="relative">
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="🔍 Rechercher par Ticket, T-Number, Site ou FME..."
+                                className="w-full border-2 border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 pl-4 text-base"
+                            />
+                            {searchQuery && (
+                                <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium">
+                                    ✕ Effacer
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <select value={filters.status} onChange={(e) => setFilters({...filters, status: e.target.value})} className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 text-sm">
+                                <option value="">📊 Tous statuts</option>
+                                <option value="en_cours">🔄 En cours</option>
+                                <option value="termine">✅ Terminé</option>
+                            </select>
+                            <select value={filters.company} onChange={(e) => setFilters({...filters, company: e.target.value})} className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 text-sm">
+                                <option value="">🏢 Toutes entreprises</option>
+                                {companies_list.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                            <input type="date" value={filters.dateFrom} onChange={(e) => setFilters({...filters, dateFrom: e.target.value})} className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 text-sm" />
+                            <input type="date" value={filters.dateTo} onChange={(e) => setFilters({...filters, dateTo: e.target.value})} className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 text-sm" />
+                        </div>
+
+                        <div className="flex items-center justify-between pt-2">
+                            <button onClick={() => { setFilters({ status: '', company: '', dateFrom: '', dateTo: '' }); setSearchQuery(''); }} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700">
+                                🔄 Réinitialiser
+                            </button>
+                            <button onClick={exportToExcel} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold flex items-center gap-2 shadow-sm">
+                                <span>📊</span><span>Exporter Excel</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead className="bg-gray-50 border-b-2 border-gray-200">
+                                <tr>
+                                    <th className="text-left py-4 px-4 font-semibold text-xs text-gray-600 uppercase">Ticket</th>
+                                    <th className="text-left py-4 px-4 font-semibold text-xs text-gray-600 uppercase">FME</th>
+                                    <th className="text-left py-4 px-4 font-semibold text-xs text-gray-600 uppercase">Entreprise</th>
+                                    <th className="text-left py-4 px-4 font-semibold text-xs text-gray-600 uppercase">Site</th>
+                                    <th className="text-left py-4 px-4 font-semibold text-xs text-gray-600 uppercase">État Initial</th>
+                                    <th className="text-left py-4 px-4 font-semibold text-xs text-gray-600 uppercase">Action</th>
+                                    <th className="text-left py-4 px-4 font-semibold text-xs text-gray-600 uppercase">Arrivée</th>
+                                    <th className="text-left py-4 px-4 font-semibold text-xs text-gray-600 uppercase">État Final</th>
+                                    <th className="text-left py-4 px-4 font-semibold text-xs text-gray-600 uppercase">Statut</th>
+                                    <th className="text-left py-4 px-4 font-semibold text-xs text-gray-600 uppercase">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {filteredInterventions.length === 0 ? (
+                                    <tr><td colSpan="10" className="text-center py-12 text-gray-400"><div className="text-4xl mb-2">📭</div><div>Aucune intervention</div></td></tr>
+                                ) : (
+                                    filteredInterventions.map((intervention) => (
+                                        <tr key={intervention.id} className="hover:bg-gray-50">
+                                            <td className="py-4 px-4"><div className="font-mono text-xs font-semibold text-blue-600">{intervention.ticket_number}</div></td>
+                                            <td className="py-4 px-4"><div className="font-medium text-gray-900">{intervention.fme_name}</div><div className="text-xs text-gray-500">{intervention.phone_number}</div></td>
+                                            <td className="py-4 px-4 text-sm text-gray-700">{intervention.company_name}</td>
+                                            <td className="py-4 px-4"><div className="font-medium text-gray-900">{intervention.site_name}</div><div className="text-xs text-gray-500">{intervention.t_number}</div></td>
+                                            <td className="py-4 px-4"><span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${getStateColor(intervention.initial_state)}`}>{formatState(intervention.initial_state)}</span></td>
+                                            <td className="py-4 px-4 text-sm text-gray-700 max-w-xs truncate">{intervention.action}</td>
+                                            <td className="py-4 px-4 text-xs text-gray-500">{formatDateTime(intervention.arrival_time)}</td>
+                                            <td className="py-4 px-4">{intervention.final_state ? <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${getStateColor(intervention.final_state)}`}>{formatState(intervention.final_state)}</span> : '-'}</td>
+                                            <td className="py-4 px-4"><span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${getStatusColor(intervention.status)}`}>{intervention.status === 'en_cours' ? 'En cours' : 'Terminé'}</span></td>
+                                            <td className="py-4 px-4">
+                                                <div className="flex gap-2">
+                                                    {intervention.status === 'en_cours' && <button onClick={() => { setSelectedIntervention(intervention.id); setShowCloseModal(true); }} className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold">Fermer</button>}
+                                                    <button onClick={() => confirmDelete(intervention.id)} className="px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 text-xs font-semibold">Suppr.</button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            {showNewModal && <NewInterventionModal sites={sites} companies={companies} fmeList={fmeList} actionSuggestions={actionSuggestions} onClose={() => setShowNewModal(false)} onSubmit={handleNewIntervention} />}
+            <Modal show={showCloseModal} onClose={() => setShowCloseModal(false)} title="Fermer l'Intervention">
+                <form onSubmit={handleCloseIntervention} className="space-y-4">
+                    <div><label className="block text-sm font-medium text-gray-700 mb-2">État Final *</label><select name="final_state" required className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"><option value="">Sélectionner...</option><option value="down">Down</option><option value="up">Up</option><option value="sector_failure">Sector Failure</option></select></div>
+                    <div><label className="block text-sm font-medium text-gray-700 mb-2">Commentaire</label><textarea name="comment" rows="3" placeholder="Facultatif..." className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 resize-none" /></div>
+                    <div className="flex gap-3 pt-2"><button type="submit" className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold">Fermer</button><button type="button" onClick={() => setShowCloseModal(false)} className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold">Annuler</button></div>
+                </form>
+            </Modal>
+            <Modal show={showDeleteModal} onClose={() => setShowDeleteModal(false)} title="Confirmer la Suppression">
+                <div className="space-y-4">
+                    <p className="text-gray-600">Êtes-vous sûr ? Cette action est irréversible.</p>
+                    <div className="flex gap-3"><button onClick={deleteIntervention} className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold">Oui, Supprimer</button><button onClick={() => setShowDeleteModal(false)} className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold">Annuler</button></div>
+                </div>
+            </Modal>
+            {toast.show && <div className={`fixed bottom-8 right-8 px-6 py-4 rounded-xl shadow-2xl animate-slide-in ${toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}><div className="font-semibold">{toast.message}</div></div>}
+        </div>
+    );
+}
+
+function Modal({ show, onClose, title, children }) {
+    if (!show) return null;
+    return <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in" onClick={onClose}><div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}><h3 className="text-2xl font-bold text-gray-900 mb-6">{title}</h3>{children}</div></div>;
+}
+
+function NewInterventionModal({ sites, companies, fmeList, actionSuggestions, onClose, onSubmit }) {
+    const [fmeName, setFmeName] = useState('');
+    const [companyName, setCompanyName] = useState('');
+    const [phoneNumber, setPhoneNumber] = useState('');
+    const [tNumber, setTNumber] = useState('');
+    const [siteName, setSiteName] = useState('');
+    const [action, setAction] = useState('');
+    const [showFmeSuggestions, setShowFmeSuggestions] = useState(false);
+    const [showCompanySuggestions, setShowCompanySuggestions] = useState(false);
+    const [showActionSuggestions, setShowActionSuggestions] = useState(false);
+
+    const filteredFme = fmeName.length > 0 ? fmeList.filter(f => f.fme_name.toLowerCase().includes(fmeName.toLowerCase()) || f.company_name.toLowerCase().includes(fmeName.toLowerCase())) : [];
+    const filteredCompanies = companyName.length > 0 ? companies.filter(c => c.company_name.toLowerCase().includes(companyName.toLowerCase())) : [];
+    const filteredActions = action.length > 0 ? actionSuggestions.filter(a => a.toLowerCase().includes(action.toLowerCase())) : actionSuggestions;
+
+    useEffect(() => {
+        const site = sites.find(s => s.t_number === tNumber);
+        if (site) setSiteName(site.site_name);
+    }, [tNumber, sites]);
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSubmit({ fme_name: fmeName, company_name: companyName, phone_number: phoneNumber, t_number: tNumber, site_name: siteName, action, initial_state: e.target.initial_state.value });
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in overflow-y-auto" onClick={onClose}>
+            <div className="bg-white rounded-2xl p-8 max-w-4xl w-full shadow-2xl animate-slide-up my-8" onClick={(e) => e.stopPropagation()}>
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">Nouvelle Intervention</h2>
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="relative">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Nom du FME *</label>
+                            <input type="text" value={fmeName} onChange={(e) => setFmeName(e.target.value)} onFocus={() => setShowFmeSuggestions(true)} onBlur={() => setTimeout(() => setShowFmeSuggestions(false), 200)} required placeholder="Nom complet..." className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500" />
+                            {showFmeSuggestions && filteredFme.length > 0 && (
+                                <div className="autocomplete-list">
+                                    {filteredFme.map((fme) => (
+                                        <div key={fme.id} className="autocomplete-item" onClick={() => { setFmeName(fme.fme_name); setCompanyName(fme.company_name); setPhoneNumber(fme.phone_number); setShowFmeSuggestions(false); }}>
+                                            <div className="font-medium">{fme.fme_name}</div>
+                                            <div className="text-xs text-gray-500">{fme.company_name} - {fme.phone_number}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="relative">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Entreprise *</label>
+                            <input type="text" value={companyName} onChange={(e) => setCompanyName(e.target.value)} onFocus={() => setShowCompanySuggestions(true)} onBlur={() => setTimeout(() => setShowCompanySuggestions(false), 200)} required placeholder="Nom de l'entreprise..." className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500" />
+                            {showCompanySuggestions && filteredCompanies.length > 0 && (
+                                <div className="autocomplete-list">
+                                    {filteredCompanies.map((company) => (
+                                        <div key={company.id} className="autocomplete-item" onClick={() => { setCompanyName(company.company_name); setShowCompanySuggestions(false); }}>{company.company_name}</div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div><label className="block text-sm font-medium text-gray-700 mb-2">Téléphone *</label><input type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} required placeholder="+237 6XX XX XX XX" className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500" /></div>
+                        <div><label className="block text-sm font-medium text-gray-700 mb-2">T-Number *</label><input type="text" value={tNumber} onChange={(e) => setTNumber(e.target.value)} required list="sites-list" placeholder="Ex: T-001" className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500" /><datalist id="sites-list">{sites.map(site => <option key={site.t_number} value={site.t_number} />)}</datalist></div>
+                        <div><label className="block text-sm font-medium text-gray-700 mb-2">Nom du Site *</label><input type="text" value={siteName} onChange={(e) => setSiteName(e.target.value)} required placeholder="Nom du site..." className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500" /></div>
+                        <div><label className="block text-sm font-medium text-gray-700 mb-2">État Initial *</label><select name="initial_state" required className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"><option value="">Sélectionner...</option><option value="down">Down</option><option value="up">Up</option><option value="sector_failure">Sector Failure</option></select></div>
+                    </div>
+
+                    <div className="relative">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Action à Mener *</label>
+                        <input type="text" value={action} onChange={(e) => setAction(e.target.value)} onFocus={() => setShowActionSuggestions(true)} onBlur={() => setTimeout(() => setShowActionSuggestions(false), 200)} required placeholder="Description de l'action..." className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500" />
+                        {showActionSuggestions && filteredActions.length > 0 && (
+                            <div className="autocomplete-list">
+                                {filteredActions.map((suggestion, i) => (
+                                    <div key={i} className="autocomplete-item" onClick={() => { setAction(suggestion); setShowActionSuggestions(false); }}>{suggestion}</div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex gap-3 pt-4">
+                        <button type="submit" className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-semibold shadow-lg">Créer l'Intervention</button>
+                        <button type="button" onClick={onClose} className="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold">Annuler</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
